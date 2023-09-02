@@ -1,77 +1,5 @@
-# %%
-# !! {"metadata":{
-# !!   "id": "ByGXyiHZWM_q"
-# !! }}
-"""
-# **Deforum Stable Diffusion (v0.7.1)**
-**Help keep these resources free for everyone**, please consider supporting us on [Patreon](https://www.patreon.com/deforum). Every bit of support is deeply appreciated!
-
-- **Looking for a latest in Deforum development?** Check out the [Deforum Automatic1111 Extension](https://github.com/deforum-art/sd-webui-deforum)
-
-- **Something not working properly?** Use our github page to submit a [New Issue](https://github.com/deforum-art/deforum-stable-diffusion/issues)
-
-- **Need help?** For support please join our community [Discord](https://discord.gg/deforum)
-"""
-
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "IJjzzkKlWM_s"
-# !! }}
-#@markdown **NVIDIA GPU**
-import subprocess, os, sys
-sub_p_res = subprocess.run(['nvidia-smi', '--query-gpu=name,memory.total,memory.free', '--format=csv,noheader'], stdout=subprocess.PIPE).stdout.decode('utf-8')
-print(f"{sub_p_res[:-1]}")
-
-# %%
-# !! {"metadata":{
-# !!   "id": "UA8-efH-WM_t"
-# !! }}
-"""
-# Setup
-"""
-
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "vohUiWo-I2HQ"
-# !! }}
-#@markdown **Environment Setup**
 import subprocess, time, gc, os, sys
-
-def setup_environment():
-    try:
-        ipy = get_ipython()
-    except:
-        ipy = 'could not get_ipython'
-    
-    if 'google.colab' in str(ipy):
-        start_time = time.time()
-        packages = [
-            'triton xformers==0.0.20',
-            'einops==0.4.1 pytorch-lightning==1.7.7 torchdiffeq==0.2.3 torchsde==0.2.5',
-            'ftfy timm transformers open-clip-torch omegaconf torchmetrics==0.11.4',
-            'safetensors kornia accelerate jsonmerge matplotlib resize-right',
-            'scikit-learn numpngw pydantic'
-        ]
-        for package in packages:
-            print(f"..installing {package}")
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + package.split())
-        if not os.path.exists("deforum-stable-diffusion"):
-            subprocess.check_call(['git', 'clone', '-b', '0.7.1', 'https://github.com/deforum-art/deforum-stable-diffusion.git'])
-        else:
-            print(f"..deforum-stable-diffusion already exists")
-        with open('deforum-stable-diffusion/src/k_diffusion/__init__.py', 'w') as f:
-            f.write('')
-        sys.path.extend(['deforum-stable-diffusion/','deforum-stable-diffusion/src',])
-        end_time = time.time()
-        print(f"..environment set up in {end_time-start_time:.0f} seconds")
-    else:
-        sys.path.extend(['src'])
-        print("..skipping setup")
-
-setup_environment()
-
+sys.path.extend(['src'])
 import torch
 import random
 import clip
@@ -83,37 +11,24 @@ from helpers.render import render_animation, render_input_video, render_image_ba
 from helpers.model_load import make_linear_decode, load_model, get_model_output_paths
 from helpers.aesthetics import load_aesthetics_model
 from helpers.prompts import Prompts
+from helpers.ffmpeg_helpers import get_extension_maxframes, get_auto_outdir_timestring, get_ffmpeg_path, make_mp4_ffmpeg, make_gif_ffmpeg, patrol_cycle
 
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "tQPlBfq9fIj8"
-# !! }}
-#@markdown **Path Setup**
+
 
 def PathSetup():
     models_path = "models" #@param {type:"string"}
     configs_path = "configs" #@param {type:"string"}
     output_path = "outputs" #@param {type:"string"}
-    mount_google_drive = True #@param {type:"boolean"}
-    models_path_gdrive = "/content/drive/MyDrive/AI/models" #@param {type:"string"}
-    output_path_gdrive = "/content/drive/MyDrive/AI/StableDiffusion" #@param {type:"string"}
     return locals()
 
 root = SimpleNamespace(**PathSetup())
 root.models_path, root.output_path = get_model_output_paths(root)
 
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "232_xKcCfIj9"
-# !! }}
-#@markdown **Model Setup**
 
 def ModelSetup():
     map_location = "cuda" #@param ["cpu", "cuda"]
     model_config = "v1-inference.yaml" #@param ["custom","v2-inference.yaml","v2-inference-v.yaml","v1-inference.yaml"]
-    model_checkpoint =  "Protogen_V2.2.ckpt" #@param ["custom","v2-1_768-ema-pruned.ckpt","v2-1_512-ema-pruned.ckpt","768-v-ema.ckpt","512-base-ema.ckpt","Protogen_V2.2.ckpt","v1-5-pruned.ckpt","v1-5-pruned-emaonly.ckpt","sd-v1-4-full-ema.ckpt","sd-v1-4.ckpt","sd-v1-3-full-ema.ckpt","sd-v1-3.ckpt","sd-v1-2-full-ema.ckpt","sd-v1-2.ckpt","sd-v1-1-full-ema.ckpt","sd-v1-1.ckpt", "robo-diffusion-v1.ckpt","wd-v1-3-float16.ckpt"]
+    model_checkpoint =  "custom" #@param ["custom","v2-1_768-ema-pruned.ckpt","v2-1_512-ema-pruned.ckpt","768-v-ema.ckpt","512-base-ema.ckpt","Protogen_V2.2.ckpt","v1-5-pruned.ckpt","v1-5-pruned-emaonly.ckpt","sd-v1-4-full-ema.ckpt","sd-v1-4.ckpt","sd-v1-3-full-ema.ckpt","sd-v1-3.ckpt","sd-v1-2-full-ema.ckpt","sd-v1-2.ckpt","sd-v1-1-full-ema.ckpt","sd-v1-1.ckpt", "robo-diffusion-v1.ckpt","wd-v1-3-float16.ckpt"]
     custom_config_path = "" #@param {type:"string"}
     custom_checkpoint_path = "" #@param {type:"string"}
     return locals()
@@ -121,24 +36,11 @@ def ModelSetup():
 root.__dict__.update(ModelSetup())
 root.model, root.device = load_model(root, load_on_run_all=True, check_sha256=True, map_location=root.map_location)
 
-# %%
-# !! {"metadata":{
-# !!   "id": "6JxwhBwtWM_t"
-# !! }}
-"""
-# Settings
-"""
-
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "E0tJVYA4WM_u"
-# !! }}
 def DeforumAnimArgs():
 
     #@markdown ####**Animation:**
     animation_mode = 'None' #@param ['None', '2D', '3D', 'Video Input', 'Interpolation'] {type:'string'}
-    max_frames = 1000 #@param {type:"number"}
+    max_frames = 100 #@param {type:"number"}
     border = 'replicate' #@param ['wrap', 'replicate'] {type:'string'}
 
     #@markdown ####**Motion Parameters:**
@@ -221,11 +123,7 @@ def DeforumAnimArgs():
 
     return locals()
 
-# %%
-# !! {"metadata":{
-# !!   "id": "i9fly1RIWM_u"
-# !! }}
-# prompts
+
 prompts = {
     0: "a beautiful lake by Asher Brown Durand, trending on Artstation",
     10: "a beautiful portrait of a woman by Artgerm, trending on Artstation",
@@ -235,22 +133,6 @@ neg_prompts = {
     0: "mountain",
 }
 
-# can be a string, list, or dictionary
-#prompts = [
-#    "a beautiful lake by Asher Brown Durand, trending on Artstation",
-#    "a beautiful portrait of a woman by Artgerm, trending on Artstation",
-#]
-#prompts = "a beautiful lake by Asher Brown Durand, trending on Artstation"
-
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "XVzhbmizWM_u"
-# !! }}
-#@markdown **Load Settings**
-override_settings_with_file = False #@param {type:"boolean"}
-settings_file = "custom" #@param ["custom", "512x512_aesthetic_0.json","512x512_aesthetic_1.json","512x512_colormatch_0.json","512x512_colormatch_1.json","512x512_colormatch_2.json","512x512_colormatch_3.json"]
-custom_settings_file = "/content/drive/MyDrive/Settings.txt"#@param {type:"string"}
 
 def DeforumArgs():
     #@markdown **Image Settings**
@@ -363,8 +245,6 @@ def DeforumArgs():
 args_dict = DeforumArgs()
 anim_args_dict = DeforumAnimArgs()
 
-if override_settings_with_file:
-    load_args(args_dict, anim_args_dict, settings_file, custom_settings_file, verbose=False)
 
 args = SimpleNamespace(**args_dict)
 anim_args = SimpleNamespace(**anim_args_dict)
@@ -393,11 +273,9 @@ if anim_args.animation_mode == 'None':
 elif anim_args.animation_mode == 'Video Input':
     args.use_init = True
 
-# clean up unused memory
 gc.collect()
 torch.cuda.empty_cache()
 
-# get prompts
 cond, uncond = Prompts(prompt=prompts,neg_prompt=neg_prompts).as_dict()
 
 # dispatch to appropriate renderer
@@ -407,33 +285,9 @@ elif anim_args.animation_mode == 'Video Input':
     render_input_video(root, anim_args, args, cond, uncond)
 elif anim_args.animation_mode == 'Interpolation':
     render_interpolation(root, anim_args, args, cond, uncond)
-else:
-    render_image_batch(root, args, cond, uncond)
 
-# %%
-# !! {"metadata":{
-# !!   "id": "gJ88kZ2-WM_v"
-# !! }}
-"""
-# Create Video From Frames
-"""
 
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "YDoi7at9avqC"
-# !! }}
-#@markdown **New Version**
-skip_video_for_run_all = True #@param {type: 'boolean'}
-create_gif = False #@param {type: 'boolean'}
-
-if skip_video_for_run_all == True:
-    print('Skipping video creation, uncheck skip_video_for_run_all if you want to run it')
-else:
-
-    from helpers.ffmpeg_helpers import get_extension_maxframes, get_auto_outdir_timestring, get_ffmpeg_path, make_mp4_ffmpeg, make_gif_ffmpeg, patrol_cycle
-
-    def ffmpegArgs():
+def ffmpegArgs():
         ffmpeg_mode = "auto" #@param ["auto","manual","timestring"]
         ffmpeg_outdir = "" #@param {type:"string"}
         ffmpeg_timestring = "" #@param {type:"string"}
@@ -452,62 +306,9 @@ else:
             ffmpeg_image_path, ffmpeg_mp4_path, ffmpeg_gif_path = get_ffmpeg_path(ffmpeg_outdir, ffmpeg_timestring, ffmpeg_extension)
         return locals()
 
-    ffmpeg_args_dict = ffmpegArgs()
-    ffmpeg_args = SimpleNamespace(**ffmpeg_args_dict)
-    make_mp4_ffmpeg(ffmpeg_args, display_ffmpeg=True, debug=False)
-    if create_gif:
-        make_gif_ffmpeg(ffmpeg_args, debug=False)
-    #patrol_cycle(args,ffmpeg_args)
+ffmpeg_args_dict = ffmpegArgs()
+ffmpeg_args = SimpleNamespace(**ffmpeg_args_dict)
+make_mp4_ffmpeg(ffmpeg_args, display_ffmpeg=True, debug=False)
 
-# %%
-# !! {"metadata":{
-# !!   "id": "8vL8nOkac767"
-# !! }}
-"""
-# Disconnect Runtime
-"""
 
-# %%
-# !! {"metadata":{
-# !!   "cellView": "form",
-# !!   "id": "MMpAcyrYWM_v"
-# !! }}
-skip_disconnect_for_run_all = True #@param {type: 'boolean'}
 
-if skip_disconnect_for_run_all == True:
-    print('Skipping disconnect, uncheck skip_disconnect_for_run_all if you want to run it')
-else:
-    from google.colab import runtime
-    runtime.unassign()
-
-# %%
-# !! {"main_metadata":{
-# !!   "accelerator": "GPU",
-# !!   "colab": {
-# !!     "provenance": []
-# !!   },
-# !!   "gpuClass": "standard",
-# !!   "kernelspec": {
-# !!     "display_name": "Python 3.10.11 ('dsd')",
-# !!     "language": "python",
-# !!     "name": "python3"
-# !!   },
-# !!   "language_info": {
-# !!     "codemirror_mode": {
-# !!       "name": "ipython",
-# !!       "version": 3
-# !!     },
-# !!     "file_extension": ".py",
-# !!     "mimetype": "text/x-python",
-# !!     "name": "python",
-# !!     "nbconvert_exporter": "python",
-# !!     "pygments_lexer": "ipython3",
-# !!     "version": "3.10.11"
-# !!   },
-# !!   "orig_nbformat": 4,
-# !!   "vscode": {
-# !!     "interpreter": {
-# !!       "hash": "25b221746895226ff7c6b9d8aea8c62a9e808c88b786315a5ba5e4e82d158d3f"
-# !!     }
-# !!   }
-# !! }}
