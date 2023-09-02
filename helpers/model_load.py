@@ -93,6 +93,11 @@ def load_model(root, load_on_run_all=True, check_sha256=True, map_location="cuda
             'url': "https://huggingface.co/darkstorm2150/Protogen_v2.2_Official_Release/resolve/main/Protogen_V2.2.ckpt",
             'requires_login': False,
         },
+        "revAnimated_v122.safetensors": {
+            'sha256': '4199bcdd147e11328d5f3560301d5a7ab4ac7eeefbf49dc3eb663cb3e772b9ac',
+            'url': "https://huggingface.co/hanafuusen2001/ReVAnimated/blob/main/revAnimated_v122.safetensors",
+            'requires_login': False,
+        },
         "v2-1_768-ema-pruned.ckpt": {
             'sha256': 'ad2a33c361c1f593c4a1fb32ea81afce2b5bb7d1983c6b94793a26a3b54b08a0',
             'url': 'https://huggingface.co/stabilityai/stable-diffusion-2-1/resolve/main/v2-1_768-ema-pruned.ckpt',
