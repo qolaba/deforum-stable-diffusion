@@ -12,8 +12,8 @@ from helpers.model_load import make_linear_decode, load_model, get_model_output_
 from helpers.aesthetics import load_aesthetics_model
 from helpers.prompts import Prompts
 from helpers.ffmpeg_helpers import get_extension_maxframes, get_auto_outdir_timestring, get_ffmpeg_path, make_mp4_ffmpeg, make_gif_ffmpeg, patrol_cycle
-
-
+import imageio
+import numpy as np
 
 def PathSetup():
     models_path = "models" #@param {type:"string"}
@@ -28,7 +28,7 @@ root.models_path, root.output_path = get_model_output_paths(root)
 def ModelSetup():
     map_location = "cuda" #@param ["cpu", "cuda"]
     model_config = "v1-inference.yaml" #@param ["custom","v2-inference.yaml","v2-inference-v.yaml","v1-inference.yaml"]
-    model_checkpoint =  "custom" #@param ["custom","v2-1_768-ema-pruned.ckpt","v2-1_512-ema-pruned.ckpt","768-v-ema.ckpt","512-base-ema.ckpt","Protogen_V2.2.ckpt","v1-5-pruned.ckpt","v1-5-pruned-emaonly.ckpt","sd-v1-4-full-ema.ckpt","sd-v1-4.ckpt","sd-v1-3-full-ema.ckpt","sd-v1-3.ckpt","sd-v1-2-full-ema.ckpt","sd-v1-2.ckpt","sd-v1-1-full-ema.ckpt","sd-v1-1.ckpt", "robo-diffusion-v1.ckpt","wd-v1-3-float16.ckpt"]
+    model_checkpoint =  "Protogen_V2.2.ckpt" #@param ["custom","v2-1_768-ema-pruned.ckpt","v2-1_512-ema-pruned.ckpt","768-v-ema.ckpt","512-base-ema.ckpt","Protogen_V2.2.ckpt","v1-5-pruned.ckpt","v1-5-pruned-emaonly.ckpt","sd-v1-4-full-ema.ckpt","sd-v1-4.ckpt","sd-v1-3-full-ema.ckpt","sd-v1-3.ckpt","sd-v1-2-full-ema.ckpt","sd-v1-2.ckpt","sd-v1-1-full-ema.ckpt","sd-v1-1.ckpt", "robo-diffusion-v1.ckpt","wd-v1-3-float16.ckpt"]
     custom_config_path = "" #@param {type:"string"}
     custom_checkpoint_path = "" #@param {type:"string"}
     return locals()
@@ -39,8 +39,8 @@ root.model, root.device = load_model(root, load_on_run_all=True, check_sha256=Tr
 def DeforumAnimArgs():
 
     #@markdown ####**Animation:**
-    animation_mode = 'None' #@param ['None', '2D', '3D', 'Video Input', 'Interpolation'] {type:'string'}
-    max_frames = 100 #@param {type:"number"}
+    animation_mode = '3D' #@param ['None', '2D', '3D', 'Video Input', 'Interpolation'] {type:'string'}
+    max_frames = 10 #@param {type:"number"}
     border = 'replicate' #@param ['wrap', 'replicate'] {type:'string'}
 
     #@markdown ####**Motion Parameters:**
@@ -278,37 +278,49 @@ torch.cuda.empty_cache()
 
 cond, uncond = Prompts(prompt=prompts,neg_prompt=neg_prompts).as_dict()
 
+def write_video(file_path, frames, fps):
+    """
+    Writes frames to an mp4 video file
+    :param file_path: Path to output video, must end with .mp4
+    :param frames: List of PIL.Image objects
+    :param fps: Desired frame rate
+    :param reversed: if order of images to be reversed (default = True)
+    """
+    # if reversed == True:
+    #     frames = frames[::-1]
+
+    # Drop missformed frames
+    frames = [frame for frame in frames if frame.size == frames[0].size]
+
+    # Create an imageio video writer, avoid block size of 512.
+    writer = imageio.get_writer(file_path, fps=fps, macro_block_size=None)
+
+
+
+    # Write the frames to the video writer
+    for frame in frames:
+        np_frame = np.array(frame)
+        writer.append_data(np_frame)
+
+    # Close the video writer
+    writer.close()
+
 # dispatch to appropriate renderer
 if anim_args.animation_mode == '2D' or anim_args.animation_mode == '3D':
-    render_animation(root, anim_args, args, cond, uncond)
+    all_images=render_animation(root, anim_args, args, cond, uncond)
 elif anim_args.animation_mode == 'Video Input':
-    render_input_video(root, anim_args, args, cond, uncond)
+    all_images=render_input_video(root, anim_args, args, cond, uncond)
 elif anim_args.animation_mode == 'Interpolation':
     render_interpolation(root, anim_args, args, cond, uncond)
+print(len(all_images))
+
+video_file_name = "infinite_zoom_" + str(time.time())
+fps = 5
+save_path = video_file_name + ".mp4"
 
 
-def ffmpegArgs():
-        ffmpeg_mode = "auto" #@param ["auto","manual","timestring"]
-        ffmpeg_outdir = "" #@param {type:"string"}
-        ffmpeg_timestring = "" #@param {type:"string"}
-        ffmpeg_image_path = "" #@param {type:"string"}
-        ffmpeg_mp4_path = "" #@param {type:"string"}
-        ffmpeg_gif_path = "" #@param {type:"string"}
-        ffmpeg_extension = "png" #@param {type:"string"}
-        ffmpeg_maxframes = 200 #@param
-        ffmpeg_fps = 12 #@param
+write_video(save_path, all_images, fps)
 
-        # determine auto paths
-        if ffmpeg_mode == 'auto':
-            ffmpeg_outdir, ffmpeg_timestring = get_auto_outdir_timestring(args,ffmpeg_mode)
-        if ffmpeg_mode in ["auto","timestring"]:
-            ffmpeg_extension, ffmpeg_maxframes = get_extension_maxframes(args,ffmpeg_outdir,ffmpeg_timestring)
-            ffmpeg_image_path, ffmpeg_mp4_path, ffmpeg_gif_path = get_ffmpeg_path(ffmpeg_outdir, ffmpeg_timestring, ffmpeg_extension)
-        return locals()
-
-ffmpeg_args_dict = ffmpegArgs()
-ffmpeg_args = SimpleNamespace(**ffmpeg_args_dict)
-make_mp4_ffmpeg(ffmpeg_args, display_ffmpeg=True, debug=False)
 
 
 

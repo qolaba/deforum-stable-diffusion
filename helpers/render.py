@@ -495,7 +495,6 @@ def render_animation(root, anim_args, args, cond_prompts, uncond_prompts):
                 args.mask_file = mask_frame
 
         # sample the diffusion model
-        print(args)
         sample, image = generate(args, root, frame_idx, return_latent=False, return_sample=True)
 
         # intercept and override to grayscale
